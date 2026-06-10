@@ -3,15 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Leitor de Código de Barras com Área</title>
+<title>Leitor de Código de Barras</title>
 
 <style>
 body {
     font-family: Arial, sans-serif;
     text-align: center;
-    background: #f5f5f5;
     margin: 0;
     padding: 20px;
+    background: #f4f4f4;
 }
 
 h2 {
@@ -31,7 +31,7 @@ video {
     background: #000;
 }
 
-/* overlay escuro */
+/* escurece tudo fora da área */
 #overlay {
     position: absolute;
     top: 0;
@@ -41,7 +41,6 @@ video {
     pointer-events: none;
 }
 
-/* área de leitura */
 #frame {
     position: absolute;
     top: 50%;
@@ -50,22 +49,8 @@ video {
     height: 25%;
     transform: translate(-50%, -50%);
     border: 3px solid #00ff00;
-    box-shadow: 0 0 0 9999px rgba(0,0,0,0.5);
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.55);
     border-radius: 10px;
-}
-
-button {
-    margin: 10px;
-    padding: 12px 18px;
-    font-size: 16px;
-    border: none;
-    border-radius: 6px;
-    background: #007bff;
-    color: white;
-}
-
-button:active {
-    transform: scale(0.98);
 }
 
 #resultado {
@@ -76,6 +61,11 @@ button:active {
     word-break: break-all;
 }
 
+#status {
+    margin-top: 10px;
+    color: #555;
+}
+
 canvas {
     display: none;
 }
@@ -83,7 +73,7 @@ canvas {
 </head>
 <body>
 
-<h2>Leitor de Código de Barras</h2>
+<h2>Leitor Automático de Código</h2>
 
 <div class="container">
     <video id="video" autoplay playsinline></video>
@@ -93,14 +83,10 @@ canvas {
     </div>
 </div>
 
+<div id="status">Iniciando câmera...</div>
+<div id="resultado">Aguardando código...</div>
+
 <canvas id="canvas"></canvas>
-
-<div>
-    <button id="start">Abrir câmera</button>
-    <button id="capture">Ler código</button>
-</div>
-
-<div id="resultado">Aguardando...</div>
 
 <script type="module">
 import { BrowserMultiFormatReader }
@@ -109,37 +95,50 @@ from "https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/+esm";
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const resultado = document.getElementById("resultado");
+const status = document.getElementById("status");
 
 const reader = new BrowserMultiFormatReader();
 
-let stream = null;
+let stream;
+let ativo = true;
 
-// abrir câmera
-document.getElementById("start").addEventListener("click", async () => {
+// iniciar câmera automaticamente
+async function iniciar() {
     try {
         stream = await navigator.mediaDevices.getUserMedia({
             video: {
-                facingMode: "environment"
+                facingMode: "environment",
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
             }
         });
 
         video.srcObject = stream;
 
-        resultado.textContent = "Aponte o código dentro do retângulo verde";
+        status.textContent = "Aponte para o código dentro do quadrado";
+
+        loop();
 
     } catch (err) {
         console.error(err);
-        resultado.textContent = err.name + " - " + err.message;
+        status.textContent = err.name + " - " + err.message;
     }
-});
+}
 
-// capturar e ler apenas área central
-document.getElementById("capture").addEventListener("click", async () => {
+// loop de leitura contínua
+async function loop() {
+    if (!ativo) return;
+
     try {
         const ctx = canvas.getContext("2d");
 
         const vw = video.videoWidth;
         const vh = video.videoHeight;
+
+        if (!vw || !vh) {
+            requestAnimationFrame(loop);
+            return;
+        }
 
         canvas.width = vw;
         canvas.height = vh;
@@ -147,10 +146,10 @@ document.getElementById("capture").addEventListener("click", async () => {
         ctx.drawImage(video, 0, 0, vw, vh);
 
         // área central (ROI)
-        const x = vw * 0.125;
-        const y = vh * 0.375;
-        const w = vw * 0.75;
-        const h = vh * 0.25;
+        const x = vw * 0.12;
+        const y = vh * 0.38;
+        const w = vw * 0.76;
+        const h = vh * 0.24;
 
         const imageData = ctx.getImageData(x, y, w, h);
 
@@ -163,13 +162,27 @@ document.getElementById("capture").addEventListener("click", async () => {
 
         const result = await reader.decodeFromCanvas(tempCanvas);
 
-        resultado.textContent = "Código: " + result.getText();
+        if (result) {
+            resultado.textContent = "Código: " + result.getText();
 
-    } catch (err) {
-        console.log(err);
-        resultado.textContent = "Nenhum código encontrado";
+            // vibração (se disponível)
+            if (navigator.vibrate) {
+                navigator.vibrate(150);
+            }
+
+            ativo = false; // trava após leitura
+            status.textContent = "Leitura concluída";
+            return;
+        }
+
+    } catch (e) {
+        // silêncio proposital (não polui console)
     }
-});
+
+    requestAnimationFrame(loop);
+}
+
+iniciar();
 </script>
 
 </body>
