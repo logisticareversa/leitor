@@ -3,36 +3,61 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Leitor de Código de Barras (Foto)</title>
+<title>Leitor de Código de Barras com Área</title>
 
 <style>
 body {
     font-family: Arial, sans-serif;
     text-align: center;
-    padding: 20px;
     background: #f5f5f5;
+    margin: 0;
+    padding: 20px;
 }
 
 h2 {
     color: #333;
 }
 
-video {
+.container {
+    position: relative;
+    display: inline-block;
     width: 100%;
     max-width: 420px;
-    border-radius: 10px;
-    background: black;
 }
 
-canvas {
-    display: none;
+video {
+    width: 100%;
+    border-radius: 10px;
+    background: #000;
+}
+
+/* overlay escuro */
+#overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+/* área de leitura */
+#frame {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 75%;
+    height: 25%;
+    transform: translate(-50%, -50%);
+    border: 3px solid #00ff00;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.5);
+    border-radius: 10px;
 }
 
 button {
     margin: 10px;
     padding: 12px 18px;
     font-size: 16px;
-    cursor: pointer;
     border: none;
     border-radius: 6px;
     background: #007bff;
@@ -50,21 +75,32 @@ button:active {
     color: green;
     word-break: break-all;
 }
+
+canvas {
+    display: none;
+}
 </style>
 </head>
 <body>
 
-<h2>Leitor de Código de Barras (por Foto)</h2>
+<h2>Leitor de Código de Barras</h2>
 
-<video id="video" autoplay playsinline></video>
+<div class="container">
+    <video id="video" autoplay playsinline></video>
+
+    <div id="overlay">
+        <div id="frame"></div>
+    </div>
+</div>
+
 <canvas id="canvas"></canvas>
 
 <div>
-    <button id="btnStart">Abrir câmera</button>
-    <button id="btnCapture">Tirar foto e ler</button>
+    <button id="start">Abrir câmera</button>
+    <button id="capture">Ler código</button>
 </div>
 
-<div id="resultado">Aguardando ação...</div>
+<div id="resultado">Aguardando...</div>
 
 <script type="module">
 import { BrowserMultiFormatReader }
@@ -78,8 +114,8 @@ const reader = new BrowserMultiFormatReader();
 
 let stream = null;
 
-// Abrir câmera
-document.getElementById("btnStart").addEventListener("click", async () => {
+// abrir câmera
+document.getElementById("start").addEventListener("click", async () => {
     try {
         stream = await navigator.mediaDevices.getUserMedia({
             video: {
@@ -89,30 +125,49 @@ document.getElementById("btnStart").addEventListener("click", async () => {
 
         video.srcObject = stream;
 
-        resultado.textContent = "Câmera aberta. Aponte para o código.";
+        resultado.textContent = "Aponte o código dentro do retângulo verde";
+
     } catch (err) {
         console.error(err);
         resultado.textContent = err.name + " - " + err.message;
     }
 });
 
-// Capturar foto e ler código
-document.getElementById("btnCapture").addEventListener("click", async () => {
+// capturar e ler apenas área central
+document.getElementById("capture").addEventListener("click", async () => {
     try {
         const ctx = canvas.getContext("2d");
 
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
 
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.width = vw;
+        canvas.height = vh;
 
-        const result = await reader.decodeFromCanvas(canvas);
+        ctx.drawImage(video, 0, 0, vw, vh);
 
-        resultado.textContent = "Código lido: " + result.getText();
+        // área central (ROI)
+        const x = vw * 0.125;
+        const y = vh * 0.375;
+        const w = vw * 0.75;
+        const h = vh * 0.25;
+
+        const imageData = ctx.getImageData(x, y, w, h);
+
+        const tempCanvas = document.createElement("canvas");
+        tempCanvas.width = w;
+        tempCanvas.height = h;
+
+        const tctx = tempCanvas.getContext("2d");
+        tctx.putImageData(imageData, 0, 0);
+
+        const result = await reader.decodeFromCanvas(tempCanvas);
+
+        resultado.textContent = "Código: " + result.getText();
 
     } catch (err) {
         console.log(err);
-        resultado.textContent = "Nenhum código encontrado na imagem";
+        resultado.textContent = "Nenhum código encontrado";
     }
 });
 </script>
