@@ -3,26 +3,44 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Leitor de Código de Barras</title>
+<title>Leitor de Código de Barras (Foto)</title>
 
 <style>
 body {
     font-family: Arial, sans-serif;
     text-align: center;
-    background: #f4f4f4;
-    margin: 0;
     padding: 20px;
+    background: #f5f5f5;
 }
 
-h1 {
+h2 {
     color: #333;
 }
 
 video {
     width: 100%;
-    max-width: 500px;
+    max-width: 420px;
     border-radius: 10px;
-    background: #000;
+    background: black;
+}
+
+canvas {
+    display: none;
+}
+
+button {
+    margin: 10px;
+    padding: 12px 18px;
+    font-size: 16px;
+    cursor: pointer;
+    border: none;
+    border-radius: 6px;
+    background: #007bff;
+    color: white;
+}
+
+button:active {
+    transform: scale(0.98);
 }
 
 #resultado {
@@ -32,56 +50,69 @@ video {
     color: green;
     word-break: break-all;
 }
-
-button {
-    margin-top: 15px;
-    padding: 10px 20px;
-    font-size: 16px;
-}
 </style>
 </head>
 <body>
 
-<h1>Leitor de Código de Barras</h1>
+<h2>Leitor de Código de Barras (por Foto)</h2>
 
-<video id="video" playsinline></video>
+<video id="video" autoplay playsinline></video>
+<canvas id="canvas"></canvas>
 
-<div id="resultado">Clique para iniciar</div>
+<div>
+    <button id="btnStart">Abrir câmera</button>
+    <button id="btnCapture">Tirar foto e ler</button>
+</div>
 
-<button id="btn">Iniciar leitura</button>
+<div id="resultado">Aguardando ação...</div>
 
 <script type="module">
 import { BrowserMultiFormatReader }
 from "https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/+esm";
 
 const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
 const resultado = document.getElementById("resultado");
-const btn = document.getElementById("btn");
 
-let reader;
+const reader = new BrowserMultiFormatReader();
 
-btn.addEventListener("click", async () => {
+let stream = null;
+
+// Abrir câmera
+document.getElementById("btnStart").addEventListener("click", async () => {
     try {
-        resultado.textContent = "Abrindo câmera...";
-
-        reader = new BrowserMultiFormatReader();
-
-        await reader.decodeFromVideoDevice(
-            null,
-            video,
-            (result, err) => {
-                if (result) {
-                    resultado.textContent = "Código: " + result.getText();
-                    console.log(result.getText());
-                }
+        stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: "environment"
             }
-        );
+        });
 
-        resultado.textContent = "Aponte para o código de barras";
+        video.srcObject = stream;
 
-    } catch (e) {
-        console.error(e);
-        resultado.textContent = "Erro: " + e.message;
+        resultado.textContent = "Câmera aberta. Aponte para o código.";
+    } catch (err) {
+        console.error(err);
+        resultado.textContent = err.name + " - " + err.message;
+    }
+});
+
+// Capturar foto e ler código
+document.getElementById("btnCapture").addEventListener("click", async () => {
+    try {
+        const ctx = canvas.getContext("2d");
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        const result = await reader.decodeFromCanvas(canvas);
+
+        resultado.textContent = "Código lido: " + result.getText();
+
+    } catch (err) {
+        console.log(err);
+        resultado.textContent = "Nenhum código encontrado na imagem";
     }
 });
 </script>
