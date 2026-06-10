@@ -1,85 +1,90 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Leitor de Código de Barras</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin-top: 20px;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Leitor de Código de Barras</title>
 
-        #scanner {
-            width: 100%;
-            max-width: 600px;
-            margin: auto;
-        }
+<style>
+body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+    background: #f4f4f4;
+    margin: 0;
+    padding: 20px;
+}
 
-        #resultado {
-            margin-top: 20px;
-            font-size: 1.3em;
-            font-weight: bold;
-            color: green;
-        }
-    </style>
+h1 {
+    color: #333;
+}
+
+video {
+    width: 100%;
+    max-width: 500px;
+    border-radius: 10px;
+    background: #000;
+}
+
+#resultado {
+    margin-top: 20px;
+    font-size: 22px;
+    font-weight: bold;
+    color: green;
+    word-break: break-all;
+}
+
+button {
+    margin-top: 15px;
+    padding: 10px 20px;
+    font-size: 16px;
+}
+</style>
 </head>
 <body>
 
-    <h2>Leitor de Código de Barras</h2>
+<h1>Leitor de Código de Barras</h1>
 
-    <div id="scanner"></div>
+<video id="video" playsinline></video>
 
-    <div id="resultado">
-        Aguardando leitura...
-    </div>
+<div id="resultado">Clique para iniciar</div>
 
-    <script>
-        Quagga.init({
-            inputStream: {
-                name: "Live",
-                type: "LiveStream",
-                target: document.querySelector("#scanner"),
-                constraints: {
-                    facingMode: "environment"
+<button id="btn">Iniciar leitura</button>
+
+<script type="module">
+import { BrowserMultiFormatReader }
+from "https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/+esm";
+
+const video = document.getElementById("video");
+const resultado = document.getElementById("resultado");
+const btn = document.getElementById("btn");
+
+let reader;
+
+btn.addEventListener("click", async () => {
+    try {
+        resultado.textContent = "Abrindo câmera...";
+
+        reader = new BrowserMultiFormatReader();
+
+        await reader.decodeFromVideoDevice(
+            null,
+            video,
+            (result, err) => {
+                if (result) {
+                    resultado.textContent = "Código: " + result.getText();
+                    console.log(result.getText());
                 }
-            },
-            decoder: {
-                readers: [
-                    "ean_reader",
-                    "ean_8_reader",
-                    "code_128_reader",
-                    "upc_reader",
-                    "upc_e_reader"
-                ]
             }
-        }, function(err) {
-            if (err) {
-                console.error(err);
-                alert("Erro ao iniciar a câmera.");
-                return;
-            }
+        );
 
-            Quagga.start();
-        });
+        resultado.textContent = "Aponte para o código de barras";
 
-        let ultimoCodigo = "";
-
-        Quagga.onDetected(function(data) {
-            const codigo = data.codeResult.code;
-
-            if (codigo !== ultimoCodigo) {
-                ultimoCodigo = codigo;
-
-                document.getElementById("resultado").textContent =
-                    "Código lido: " + codigo;
-
-                console.log("Código detectado:", codigo);
-            }
-        });
-    </script>
+    } catch (e) {
+        console.error(e);
+        resultado.textContent = "Erro: " + e.message;
+    }
+});
+</script>
 
 </body>
 </html>
