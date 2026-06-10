@@ -117,13 +117,14 @@ canvas{
 
 <canvas id="canvas"></canvas>
 
+```html
 <script type="module">
 
-import { BrowserMultiFormatReader }
-from "https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/+esm";
+const video =
+document.getElementById("video");
 
-const video = document.getElementById("video");
-const canvas = document.getElementById("canvas");
+const canvas =
+document.getElementById("canvas");
 
 const resultado =
 document.getElementById("resultado");
@@ -131,40 +132,14 @@ document.getElementById("resultado");
 const status =
 document.getElementById("status");
 
-const tipo =
-document.getElementById("tipo");
-
 let ativo = true;
 let stream;
 
-// fallback ZXing
-const zxingReader =
-new BrowserMultiFormatReader();
-
-// BarcodeDetector nativo
-let detector = null;
-
-if ("BarcodeDetector" in window){
-
-    detector = new BarcodeDetector({
-        formats:[
-            "code_128",
-            "ean_13",
-            "ean_8",
-            "qr_code",
-            "data_matrix"
-        ]
-    });
-
-    console.log(
-        "BarcodeDetector disponível"
-    );
-}
-else{
-    console.log(
-        "Fallback ZXing"
-    );
-}
+// SOMENTE DATAMATRIX
+const detector =
+new BarcodeDetector({
+    formats:["data_matrix"]
+});
 
 // iniciar câmera
 async function iniciar(){
@@ -172,7 +147,8 @@ async function iniciar(){
     try{
 
         stream =
-        await navigator.mediaDevices
+        await navigator
+        .mediaDevices
         .getUserMedia({
 
             video:{
@@ -186,52 +162,50 @@ async function iniciar(){
                     ideal:1080
                 }
             }
-
         });
 
-        video.srcObject = stream;
+        video.srcObject =
+        stream;
 
         video.onloadedmetadata =
         async ()=>{
 
-            // tentar zoom
             const track =
-            stream.getVideoTracks()[0];
+            stream
+            .getVideoTracks()[0];
 
             const capabilities =
-            track.getCapabilities();
+            track
+            .getCapabilities();
 
+            // zoom forte ajuda MUITO
+            // no DataMatrix
             if(capabilities.zoom){
 
                 try{
 
-                    await track.applyConstraints({
+                    await track
+                    .applyConstraints({
+
                         advanced:[
                             {
-                                zoom:2
+                                zoom:3
                             }
                         ]
                     });
 
-                }catch(err){
-                    console.log(
-                        "Zoom não suportado"
-                    );
-                }
+                }catch{}
             }
 
             status.textContent =
-            "Aponte para o código";
+            "Aponte APENAS para o DataMatrix";
         };
 
         loop();
 
     }catch(err){
 
-        console.error(err);
-
         status.textContent =
-        "Erro câmera: " +
         err.message;
     }
 }
@@ -243,7 +217,8 @@ async function loop(){
     try{
 
         const ctx =
-        canvas.getContext("2d");
+        canvas
+        .getContext("2d");
 
         const vw =
         video.videoWidth;
@@ -253,7 +228,10 @@ async function loop(){
 
         if(!vw || !vh){
 
-            requestAnimationFrame(loop);
+            requestAnimationFrame(
+                loop
+            );
+
             return;
         }
 
@@ -268,15 +246,21 @@ async function loop(){
             vh
         );
 
-        // região quadrada central
+        /*
+        RECORTE CENTRAL:
+        Ignora os códigos
+        laterais da etiqueta
+        */
+
         const size =
-        Math.min(vw, vh) * 0.55;
+        Math.min(vw, vh)
+        * 0.38;
 
         const x =
-        (vw - size)/2;
+        (vw - size) / 2;
 
         const y =
-        (vh - size)/2;
+        (vh - size) / 2;
 
         const imageData =
         ctx.getImageData(
@@ -287,17 +271,20 @@ async function loop(){
         );
 
         const tempCanvas =
-        document.createElement(
+        document
+        .createElement(
             "canvas"
         );
 
-        tempCanvas.width = size;
-        tempCanvas.height = size;
+        tempCanvas.width =
+        size;
+
+        tempCanvas.height =
+        size;
 
         const tctx =
-        tempCanvas.getContext(
-            "2d"
-        );
+        tempCanvas
+        .getContext("2d");
 
         tctx.putImageData(
             imageData,
@@ -305,79 +292,53 @@ async function loop(){
             0
         );
 
-        // tenta BarcodeDetector
-        if(detector){
+        const detections =
+        await detector.detect(
+            tempCanvas
+        );
 
-            const detections =
-            await detector.detect(
-                tempCanvas
+        if(
+            detections.length > 0
+        ){
+
+            /*
+            pega apenas
+            DataMatrix
+            */
+
+            const dataMatrix =
+            detections.find(
+                item =>
+                item.format ===
+                "data_matrix"
             );
 
-            if(
-                detections.length > 0
-            ){
+            if(dataMatrix){
 
-                sucesso(
-                    detections[0]
-                    .rawValue,
+                resultado.innerHTML =
+                "Código:<br>"
+                + dataMatrix
+                .rawValue;
 
-                    detections[0]
-                    .format
-                );
+                status.textContent =
+                "DataMatrix lido";
+
+                ativo = false;
+
+                if(
+                    navigator.vibrate
+                ){
+                    navigator
+                    .vibrate(150);
+                }
 
                 return;
             }
         }
 
-        // fallback ZXing
-        try{
-
-            const result =
-            await zxingReader
-            .decodeFromCanvas(
-                tempCanvas
-            );
-
-            if(result){
-
-                sucesso(
-                    result.getText(),
-                    "ZXING"
-                );
-
-                return;
-            }
-
-        }catch{}
-
-    }catch(e){
-        console.log(e);
-    }
+    }catch(e){}
 
     requestAnimationFrame(loop);
-}
-
-function sucesso(
-    codigo,
-    formato
-){
-
-    resultado.innerHTML =
-    "<strong>Código:</strong><br>"
-    + codigo;
-
-    tipo.innerHTML =
-    "<strong>Formato:</strong> "
-    + formato;
-
-    status.textContent =
-    "Leitura concluída";
-
-    ativo = false;
-
-    if(navigator.vibrate){
-        navigator.vibrate(150);
-    }
 }
 
 window.reiniciarLeitura =
@@ -386,12 +347,10 @@ function(){
     ativo = true;
 
     resultado.textContent =
-    "Aguardando leitura...";
-
-    tipo.textContent = "";
+    "Aguardando leitura";
 
     status.textContent =
-    "Aponte para o código";
+    "Aponte para o DataMatrix";
 
     loop();
 }
@@ -399,6 +358,7 @@ function(){
 iniciar();
 
 </script>
+```
 
 </body>
 </html>
