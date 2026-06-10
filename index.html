@@ -1,0 +1,405 @@
+```html
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Leitor Industrial de Código</title>
+
+<style>
+body{
+    font-family: Arial, sans-serif;
+    text-align:center;
+    margin:0;
+    padding:20px;
+    background:#f4f4f4;
+}
+
+h2{
+    color:#333;
+}
+
+.container{
+    position:relative;
+    display:inline-block;
+    width:100%;
+    max-width:420px;
+}
+
+video{
+    width:100%;
+    border-radius:12px;
+    background:black;
+}
+
+/* Overlay escuro */
+#overlay{
+    position:absolute;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
+    pointer-events:none;
+}
+
+/* Área quadrada para DataMatrix */
+#frame{
+    position:absolute;
+    top:50%;
+    left:50%;
+    width:55%;
+    height:55%;
+    transform:translate(-50%, -50%);
+    border:3px solid #00ff00;
+    border-radius:12px;
+    box-shadow:0 0 0 9999px rgba(0,0,0,0.55);
+}
+
+#resultado{
+    margin-top:20px;
+    font-size:20px;
+    font-weight:bold;
+    color:green;
+    word-break:break-word;
+}
+
+#tipo{
+    margin-top:10px;
+    font-size:18px;
+    color:#444;
+}
+
+#status{
+    margin-top:10px;
+    color:#666;
+}
+
+button{
+    margin-top:20px;
+    padding:12px 20px;
+    border:none;
+    border-radius:8px;
+    background:#007bff;
+    color:white;
+    font-size:16px;
+    cursor:pointer;
+}
+
+canvas{
+    display:none;
+}
+</style>
+</head>
+<body>
+
+<h2>Leitor de Código Industrial</h2>
+
+<div class="container">
+    <video id="video" autoplay playsinline></video>
+
+    <div id="overlay">
+        <div id="frame"></div>
+    </div>
+</div>
+
+<div id="status">Iniciando câmera...</div>
+
+<div id="resultado">
+    Aguardando leitura...
+</div>
+
+<div id="tipo"></div>
+
+<button onclick="reiniciarLeitura()">
+    Ler Novamente
+</button>
+
+<canvas id="canvas"></canvas>
+
+<script type="module">
+
+import { BrowserMultiFormatReader }
+from "https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/+esm";
+
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+
+const resultado =
+document.getElementById("resultado");
+
+const status =
+document.getElementById("status");
+
+const tipo =
+document.getElementById("tipo");
+
+let ativo = true;
+let stream;
+
+// fallback ZXing
+const zxingReader =
+new BrowserMultiFormatReader();
+
+// BarcodeDetector nativo
+let detector = null;
+
+if ("BarcodeDetector" in window){
+
+    detector = new BarcodeDetector({
+        formats:[
+            "code_128",
+            "ean_13",
+            "ean_8",
+            "qr_code",
+            "data_matrix"
+        ]
+    });
+
+    console.log(
+        "BarcodeDetector disponível"
+    );
+}
+else{
+    console.log(
+        "Fallback ZXing"
+    );
+}
+
+// iniciar câmera
+async function iniciar(){
+
+    try{
+
+        stream =
+        await navigator.mediaDevices
+        .getUserMedia({
+
+            video:{
+                facingMode:"environment",
+
+                width:{
+                    ideal:1920
+                },
+
+                height:{
+                    ideal:1080
+                }
+            }
+
+        });
+
+        video.srcObject = stream;
+
+        video.onloadedmetadata =
+        async ()=>{
+
+            // tentar zoom
+            const track =
+            stream.getVideoTracks()[0];
+
+            const capabilities =
+            track.getCapabilities();
+
+            if(capabilities.zoom){
+
+                try{
+
+                    await track.applyConstraints({
+                        advanced:[
+                            {
+                                zoom:2
+                            }
+                        ]
+                    });
+
+                }catch(err){
+                    console.log(
+                        "Zoom não suportado"
+                    );
+                }
+            }
+
+            status.textContent =
+            "Aponte para o código";
+        };
+
+        loop();
+
+    }catch(err){
+
+        console.error(err);
+
+        status.textContent =
+        "Erro câmera: " +
+        err.message;
+    }
+}
+
+async function loop(){
+
+    if(!ativo) return;
+
+    try{
+
+        const ctx =
+        canvas.getContext("2d");
+
+        const vw =
+        video.videoWidth;
+
+        const vh =
+        video.videoHeight;
+
+        if(!vw || !vh){
+
+            requestAnimationFrame(loop);
+            return;
+        }
+
+        canvas.width = vw;
+        canvas.height = vh;
+
+        ctx.drawImage(
+            video,
+            0,
+            0,
+            vw,
+            vh
+        );
+
+        // região quadrada central
+        const size =
+        Math.min(vw, vh) * 0.55;
+
+        const x =
+        (vw - size)/2;
+
+        const y =
+        (vh - size)/2;
+
+        const imageData =
+        ctx.getImageData(
+            x,
+            y,
+            size,
+            size
+        );
+
+        const tempCanvas =
+        document.createElement(
+            "canvas"
+        );
+
+        tempCanvas.width = size;
+        tempCanvas.height = size;
+
+        const tctx =
+        tempCanvas.getContext(
+            "2d"
+        );
+
+        tctx.putImageData(
+            imageData,
+            0,
+            0
+        );
+
+        // tenta BarcodeDetector
+        if(detector){
+
+            const detections =
+            await detector.detect(
+                tempCanvas
+            );
+
+            if(
+                detections.length > 0
+            ){
+
+                sucesso(
+                    detections[0]
+                    .rawValue,
+
+                    detections[0]
+                    .format
+                );
+
+                return;
+            }
+        }
+
+        // fallback ZXing
+        try{
+
+            const result =
+            await zxingReader
+            .decodeFromCanvas(
+                tempCanvas
+            );
+
+            if(result){
+
+                sucesso(
+                    result.getText(),
+                    "ZXING"
+                );
+
+                return;
+            }
+
+        }catch{}
+
+    }catch(e){
+        console.log(e);
+    }
+
+    requestAnimationFrame(loop);
+}
+
+function sucesso(
+    codigo,
+    formato
+){
+
+    resultado.innerHTML =
+    "<strong>Código:</strong><br>"
+    + codigo;
+
+    tipo.innerHTML =
+    "<strong>Formato:</strong> "
+    + formato;
+
+    status.textContent =
+    "Leitura concluída";
+
+    ativo = false;
+
+    if(navigator.vibrate){
+        navigator.vibrate(150);
+    }
+}
+
+window.reiniciarLeitura =
+function(){
+
+    ativo = true;
+
+    resultado.textContent =
+    "Aguardando leitura...";
+
+    tipo.textContent = "";
+
+    status.textContent =
+    "Aponte para o código";
+
+    loop();
+}
+
+iniciar();
+
+</script>
+
+</body>
+</html>
+```
